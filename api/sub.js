@@ -1,0 +1,414 @@
+import {
+  getClient,
+  getInbound
+} from '../lib/xui.js';
+import { loadPanelsFromDb } from '../lib/panels.js';
+
+import { readToken } from '../lib/token.js';
+import { migrate } from '../lib/db.js';
+import {
+  getTrafficForEmail,
+  getSubscriptionByEmail,
+  buildUserinfoHeader,
+  profileTitleHeader
+} from '../lib/traffic.js';
+
+function parseMaybeJson(value) {
+  if (value == null) return {};
+  if (typeof value === 'object') return value;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function normalizeInbound(inbound) {
+  if (!inbound) return inbound;
+  return {
+    ...inbound,
+    settings: parseMaybeJson(inbound.settings),
+    streamSettings: parseMaybeJson(inbound.streamSettings),
+    sniffing: parseMaybeJson(inbound.sniffing)
+  };
+}
+
+/** VLESS id must be a UUID string, never a numeric DB row id */
+function isUuid(v) {
+  return (
+    typeof v === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      v.trim()
+    )
+  );
+}
+
+function extractUuid(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  const candidates = [obj.id, obj.uuid, obj.clientId, obj.client_id];
+  for (const c of candidates) {
+    if (isUuid(c)) return c.trim();
+  }
+  return null;
+}
+
+function findClient(inbound, email, clientFromApi) {
+  // 1) Prefer API client if it has a real UUID
+  const fromApi = extractUuid(clientFromApi);
+  if (fromApi) {
+    return {
+      ...(clientFromApi || {}),
+      id: fromApi,
+      flow: clientFromApi?.flow || ''
+    };
+  }
+
+  // 2) Search inbound settings.clients (source of truth for VLESS UUID)
+  const list = inbound?.settings?.clients || [];
+  const match = list.find(
+    (x) =>
+      x &&
+      (x.email === email ||
+        String(x.email || '').toLowerCase() === String(email).toLowerCase())
+  );
+
+  const fromSettings = extractUuid(match);
+  if (fromSettings) {
+    return {
+      ...(match || {}),
+      id: fromSettings,
+      flow: match?.flow || ''
+    };
+  }
+
+  // clientStats only has numeric traffic id — NEVER use it as VLESS UUID
+  return null;
+}
+
+function buildVless(panel, inbound, client) {
+  const ss = inbound.streamSettings || {};
+  const rs = ss.realitySettings || {};
+  const tcp = ss.tcpSettings || {};
+
+  let address =
+    panel.server ||
+    inbound.shareAddr ||
+    inbound.listen ||
+    '';
+
+  if (!address || address === '0.0.0.0' || address === '::') {
+    address = panel.server || '';
+  }
+
+  const port = inbound.port;
+  const uuid = client.id;
+
+  if (!address || !port || !isUuid(uuid)) {
+    throw new Error(
+      `Incomplete VLESS data on ${panel.server || panel.name}: ` +
+        `address=${address}, port=${port}, uuid=${uuid}`
+    );
+  }
+
+  const q = new URLSearchParams();
+
+  const network = ss.network || 'tcp';
+  q.set('type', network);
+
+  const flow = client.flow || '';
+  if (flow) {
+    q.set('flow', flow);
+  }
+
+  if (network === 'tcp') {
+    q.set('headerType', tcp.header?.type || 'none');
+  }
+
+  if (network === 'ws') {
+    const ws = ss.wsSettings || {};
+    if (ws.path) q.set('path', ws.path);
+    const host = ws.headers?.Host || ws.headers?.host;
+    if (host) q.set('host', host);
+  }
+
+  if (network === 'grpc') {
+    const grpc = ss.grpcSettings || {};
+    if (grpc.serviceName) q.set('serviceName', grpc.serviceName);
+  }
+
+  const security = ss.security || 'none';
+  q.set('security', security);
+
+  if (security === 'reality') {
+    const fingerprint =
+      rs.settings?.fingerprint || rs.fingerprint || '';
+    if (fingerprint) q.set('fp', fingerprint);
+
+    const sni =
+      (Array.isArray(rs.serverNames) && rs.serverNames[0]) ||
+      rs.dest ||
+      '';
+    const sniHost = String(sni).split(':')[0];
+    if (sniHost) q.set('sni', sniHost);
+
+    const publicKey =
+      rs.publicKey || rs.settings?.publicKey || '';
+    if (publicKey) q.set('pbk', publicKey);
+
+    const shortId =
+      (Array.isArray(rs.shortIds) && rs.shortIds[0]) || '';
+    if (shortId) q.set('sid', shortId);
+
+    const spiderX =
+      rs.settings?.spiderX ?? rs.settings?.spider ?? '';
+    if (spiderX !== '' && spiderX != null) {
+      q.set('spx', String(spiderX));
+    }
+  }
+
+  if (security === 'tls') {
+    const tls = ss.tlsSettings || {};
+    const sni = tls.serverName || '';
+    if (sni) q.set('sni', sni);
+    const fp = tls.fingerprint || '';
+    if (fp) q.set('fp', fp);
+    const alpn = tls.alpn;
+    if (Array.isArray(alpn) && alpn.length) {
+      q.set('alpn', alpn.join(','));
+    }
+  }
+
+  // Happ shows only #fragment as server name — NEVER use host/URL here
+  const key = String(panel.key || panel.name || '').toLowerCase();
+  const byKey = {
+    de: '🇩🇪Германия',
+    ru: '🇷🇺Россия',
+    fi: '🇫🇮Финляндия',
+    nl: '🇳🇱Нидерланды',
+    us: '🇺🇸США'
+  };
+  let remark =
+    (panel.label && String(panel.label).trim()) ||
+    byKey[key] ||
+    null;
+  // if label looks like a host/url — ignore it
+  if (
+    remark &&
+    (/^https?:\/\//i.test(remark) ||
+      remark.includes('/') ||
+      /^[\d.]+$/.test(remark) ||
+      /\.(ru|com|online|app|dev)([/:]|$)/i.test(remark))
+  ) {
+    remark = byKey[key] || 'Server';
+  }
+  if (!remark) {
+    remark = byKey[key] || 'Server';
+  }
+
+  const name = encodeURIComponent(String(remark));
+
+  return `vless://${uuid}@${address}:${port}?${q.toString()}#${name}`;
+}
+
+export default async function handler(req, res) {
+  try {
+    let token = '';
+
+    if (req.query?.token) {
+      token = Array.isArray(req.query.token)
+        ? req.query.token.join('.')
+        : String(req.query.token);
+    } else {
+      const pathPart = (req.url || '')
+        .split('?')[0]
+        .split('/')
+        .filter(Boolean)
+        .pop();
+      if (pathPart && pathPart !== 'sub') {
+        token = pathPart;
+      }
+    }
+
+    try {
+      token = decodeURIComponent(String(token || '').trim());
+    } catch {
+      token = String(token || '').trim();
+    }
+
+    if (!token || token === 'sub') {
+      throw new Error('Missing subscription token');
+    }
+
+    const email = readToken(token);
+    const panels = await loadPanelsFromDb();
+    const output = [];
+    const errors = [];
+
+    console.log('Sub request for email:', email);
+
+    function withTimeout(promise, ms, label) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(label + ' timeout ' + ms + 'ms')), ms)
+        )
+      ]);
+    }
+
+    for (const [key, panel] of Object.entries(panels)) {
+      try {
+        if (!panel?.url) {
+          errors.push(key + ': no panel url');
+          continue;
+        }
+
+        let inboundRaw = null;
+        try {
+          inboundRaw = await withTimeout(getInbound(panel), 8000, key + ' inbound');
+        } catch (e) {
+          errors.push(key + ': inbound ' + (e.message || e));
+          continue;
+        }
+
+        let clientRaw = null;
+        try {
+          clientRaw = await withTimeout(
+            getClient(panel, email).catch(() => null),
+            6000,
+            key + ' client'
+          );
+        } catch (_) {
+          clientRaw = null;
+        }
+
+        const inbound = normalizeInbound(inboundRaw);
+        const clientsInSettings = inbound?.settings?.clients || [];
+        const actualClient = findClient(inbound, email, clientRaw);
+
+        if (!actualClient?.id) {
+          errors.push(
+            key +
+              ': no UUID for ' +
+              email +
+              ' (clients in inbound: ' +
+              clientsInSettings.length +
+              ')'
+          );
+          continue;
+        }
+
+        const link = buildVless(panel, inbound, actualClient);
+        output.push(link);
+      } catch (err) {
+        console.error('sub panel ' + key + ':', err);
+        errors.push(key + ': ' + (err.message || String(err)));
+      }
+    }
+
+    if (!output.length) {
+      // Soft error text for Happ (still 503 not opaque 500)
+      const msg =
+        'No server links built. ' +
+        (errors.length ? errors.join(' | ') : 'Unknown error');
+      console.error(msg);
+      res.statusCode = 503;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.end(msg);
+      return;
+    }
+
+    // --- Same traffic source as Mini App (/api/me) ---
+    let up = 0;
+    let down = 0;
+    let totalGb = 0;
+    let expiryAt = null;
+    let displayName = 'Destr Connect';
+    try {
+      await migrate();
+      const sub = await getSubscriptionByEmail(email);
+      if (sub) {
+        if (String(sub.status || '') === 'blocked') {
+          res.statusCode = 403;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.end('Subscription blocked');
+          return;
+        }
+        totalGb = Number(sub.total_gb || 0);
+        expiryAt = sub.expiry_at || null;
+        displayName = sub.display_name || displayName;
+      }
+      try {
+        const tr = await withTimeout(
+          getTrafficForEmail(email),
+          6000,
+          'traffic'
+        );
+        up = tr.up;
+        down = tr.down;
+      } catch (te) {
+        console.warn('traffic skip', te.message);
+      }
+    } catch (e) {
+      console.warn('sub traffic/db', e.message);
+    }
+
+    const userinfo = buildUserinfoHeader({
+      up,
+      down,
+      totalGb,
+      expiryAt
+    });
+    // Always show "Destr Connect" in Happ (not user display name)
+    const titleHdr = profileTitleHeader('Destr Connect');
+    const statusUrl = (
+      process.env.STATUS_PAGE_URL ||
+      process.env.STATUS_URL ||
+      'https://shopdxs.online/worker'
+    ).replace(/\/$/, '');
+    const announce =
+      'Чтобы узнать, работает ли сейчас сервер, перейдите по ссылке — ' +
+      statusUrl;
+
+    const body =
+      '#profile-title: Destr Connect\n#announce: ' +
+      announce +
+      '\n' +
+      output.join('\n');
+
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('profile-title', titleHdr);
+    res.setHeader('Profile-Title', titleHdr);
+    // HTTP headers must be ASCII — Cyrillic "announce" text only in body (#announce:)
+    // support-url is ASCII URL, safe for headers
+    if (statusUrl && /^[\x20-\x7E]+$/.test(statusUrl)) {
+      res.setHeader('support-url', statusUrl);
+      res.setHeader('Support-Url', statusUrl);
+      res.setHeader('profile-web-page-url', statusUrl);
+      res.setHeader('Profile-Web-Page-Url', statusUrl);
+    }
+    res.setHeader('subscription-userinfo', userinfo);
+    res.setHeader('Subscription-Userinfo', userinfo);
+    res.setHeader('profile-update-interval', '12');
+    res.setHeader('Profile-Update-Interval', '12');
+    // CORS-ish exposure for some clients
+    res.setHeader(
+      'Access-Control-Expose-Headers',
+      'Subscription-Userinfo, Profile-Title, Profile-Update-Interval, Announce, Support-Url, Profile-Web-Page-Url'
+    );
+    res.end(body);
+
+    if (errors.length) {
+      console.warn('sub partial errors:', errors);
+    }
+  } catch (e) {
+    console.error('Subscription error:', e);
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end('Subscription error: ' + (e.message || String(e)));
+  }
+}

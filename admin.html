@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/images/logoPWA.png" />
+  <title>Destr Connect — Админ</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #141c2e;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --blue: #3390ec;
+      --line: #1e293b;
+      --danger: #f87171;
+      --ok: #4ade80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+      padding: max(12px, env(safe-area-inset-top)) 14px max(20px, env(safe-area-inset-bottom));
+      max-width: 720px; margin: 0 auto; min-height: 100vh;
+    }
+    h1 { font-size: 20px; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .tabs {
+      display: flex; gap: 8px; margin: 16px 0;
+      overflow-x: auto;
+    }
+    .tab {
+      flex: 1; min-width: 0;
+      border: none; border-radius: 12px;
+      padding: 12px 8px; font-size: 14px; font-weight: 600;
+      background: var(--card); color: var(--muted); cursor: pointer;
+    }
+    .tab.on { background: var(--blue); color: #fff; }
+    .panel { display: none; }
+    .panel.on { display: block; }
+    .card {
+      background: var(--card); border-radius: 16px; padding: 14px; margin-bottom: 10px;
+    }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
+    input, select {
+      width: 100%; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+      background: #0f172a; color: var(--text); padding: 0 12px; font-size: 15px;
+    }
+    .btn {
+      width: 100%; height: 48px; border: none; border-radius: 14px;
+      background: var(--blue); color: #fff; font-weight: 600; font-size: 15px;
+      margin-top: 14px; cursor: pointer;
+    }
+    .btn.secondary { background: #1e293b; }
+    .btn.danger { background: #7f1d1d; }
+    .btn:disabled { opacity: .5; }
+    .row {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    }
+    .row .meta { flex: 1; min-width: 0; }
+    .title { font-weight: 700; font-size: 15px; }
+    .muted { color: var(--muted); font-size: 12px; margin-top: 4px; word-break: break-all; }
+    .badge {
+      display: inline-block; font-size: 11px; font-weight: 700;
+      padding: 3px 8px; border-radius: 999px; margin-left: 6px;
+    }
+    .badge.paid { background: #14532d; color: var(--ok); }
+    .badge.unpaid { background: #7f1d1d; color: #fecaca; }
+    .badge.blocked { background: #450a0a; color: #fca5a5; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .actions button {
+      border: none; border-radius: 10px; padding: 8px 10px;
+      background: #1e293b; color: var(--text); font-size: 12px; cursor: pointer;
+    }
+    .linkbox {
+      margin-top: 12px; padding: 12px; border-radius: 12px;
+      background: #0f172a; word-break: break-all; font-size: 13px;
+    }
+    .search { margin-bottom: 12px; }
+    .toast {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      background: #1e293b; color: #fff; padding: 10px 16px; border-radius: 12px;
+      font-size: 14px; display: none; z-index: 20;
+    }
+  </style>
+</head>
+<body>
+  <h1>Destr Connect</h1>
+  <p class="sub">Админ-панель · PWA</p>
+  <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+    <button type="button" class="btn secondary" id="btn-push" style="width:auto;padding:0 14px;height:40px;margin:0">Включить пуш</button>
+    <button type="button" class="btn secondary" id="btn-push-test" style="width:auto;padding:0 14px;height:40px;margin:0">Тест пуш</button>
+  </div>
+
+  <div class="tabs">
+    <button type="button" class="tab on" data-tab="clients">Клиенты</button>
+    <button type="button" class="tab" data-tab="create">Создать</button>
+    <button type="button" class="tab" data-tab="servers">Серверы</button>
+  </div>
+
+  <div class="panel on" id="tab-clients">
+    <input class="search" id="q" type="search" placeholder="Поиск по имени / id" />
+    <div id="list"></div>
+  </div>
+
+  <div class="panel" id="tab-create">
+    <div class="card">
+      <label>Имя клиента</label>
+      <input id="c-name" placeholder="Ирина" />
+      <label>Трафик, ГБ (0 = безлимит)</label>
+      <input id="c-gb" type="number" value="0" />
+      <label>Срок, дней (0 = без срока в 3x)</label>
+      <input id="c-days" type="number" value="30" />
+      <button type="button" class="btn" id="c-go">Создать подписку</button>
+      <div class="linkbox hidden" id="c-result"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="tab-servers">
+    <div class="card">
+      <p class="muted" style="margin-bottom:8px">Все серверы задаются здесь. Они попадают в Happ и на страницу клиента. Статус — живой запрос к панели.</p>
+      <button type="button" class="btn secondary" id="s-health" style="margin-bottom:10px">Проверить доступность</button>
+      <div id="srv-db"></div>
+      <label>Код (de, ru, se…)</label>
+      <input id="s-key" placeholder="se" />
+      <label>Название</label>
+      <input id="s-label" placeholder="Швеция" />
+      <label>Panel URL</label>
+      <input id="s-url" placeholder="https://ip:port/path" />
+      <label>API Token</label>
+      <input id="s-token" placeholder="Bearer token" />
+      <label>Server host (для VLESS)</label>
+      <input id="s-host" placeholder="1.2.3.4" />
+      <label>Inbound ID</label>
+      <input id="s-in" type="number" value="1" />
+      <button type="button" class="btn" id="s-add">Добавить сервер</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const ADMIN_KEY = params.get('key') || params.get('admin') || localStorage.getItem('dc_admin_key') || '';
+    if (ADMIN_KEY) localStorage.setItem('dc_admin_key', ADMIN_KEY);
+
+    function toast(t) {
+      const el = document.getElementById('toast');
+      el.textContent = t;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 2800);
+    }
+
+    async function api(action, body = {}) {
+      const r = await fetch('/api/admin?action=' + encodeURIComponent(action), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Key': ADMIN_KEY,
+          Authorization: 'Bearer ' + ADMIN_KEY
+        },
+        body: JSON.stringify({ ...body, action })
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
+      return data;
+    }
+
+    document.querySelectorAll('.tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach((b) => b.classList.remove('on'));
+        document.querySelectorAll('.panel').forEach((p) => p.classList.remove('on'));
+        btn.classList.add('on');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('on');
+      });
+    });
+
+    async function loadClients() {
+      const q = document.getElementById('q').value.trim();
+      const data = await api('list', { q });
+      const box = document.getElementById('list');
+      box.innerHTML = '';
+      (data.items || []).forEach((s) => {
+        const el = document.createElement('div');
+        el.className = 'card';
+        const pay = s.payment_status === 'paid' ? 'paid' : 'unpaid';
+        const payLabel = s.payment_status === 'paid' ? 'оплачено' : 'не оплачено';
+        const blocked = s.status === 'blocked';
+        el.innerHTML =
+          '<div class="row"><div class="meta">' +
+          '<div class="title">#' + s.id + ' · ' + (s.display_name || '—') +
+          '<span class="badge ' + pay + '">' + payLabel + '</span>' +
+          (blocked ? '<span class="badge blocked">блок</span>' : '') +
+          '</div>' +
+          '<div class="muted">' + (s.paid_until || s.expiry_at || 'без даты') + '</div>' +
+          '<div class="muted">' + (s.xui_email || '') + '</div>' +
+          '</div></div>' +
+          '<div class="actions">' +
+          '<button type="button" data-a="link" data-id="' + s.id + '" data-token="' + (s.sub_token || '') + '">Ссылка клиенту</button>' +
+          '<button type="button" data-a="paid" data-id="' + s.id + '">Оплачено + дата</button>' +
+          '<button type="button" data-a="unpaid" data-id="' + s.id + '">Не оплачено</button>' +
+          '<button type="button" data-a="block" data-id="' + s.id + '">' + (blocked ? 'Включить' : 'Выключить') + '</button>' +
+          '</div>';
+        box.appendChild(el);
+      });
+      if (!(data.items || []).length) box.innerHTML = '<div class="card muted">Пока нет подписок</div>';
+    }
+
+    document.getElementById('list').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-a]');
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
+      const a = btn.dataset.a;
+      try {
+        if (a === 'link') {
+          const url = location.origin + '/sub?token=' + encodeURIComponent(btn.dataset.token || '');
+          await navigator.clipboard.writeText(url);
+          toast('Ссылка скопирована');
+          alert(url);
+        } else if (a === 'paid') {
+          const d = prompt('Оплачено до (ГГГГ-ММ-ДД):', new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10));
+          if (!d) return;
+          await api('set_payment', { id, paid: true, paidUntil: d + 'T23:59:59.000Z' });
+          toast('Отмечено оплаченным');
+          loadClients();
+        } else if (a === 'unpaid') {
+          await api('set_payment', { id, paid: false });
+          toast('Не оплачено');
+          loadClients();
+        } else if (a === 'block') {
+          const row = (await api('list')).items.find((x) => Number(x.id) === id);
+          const blocked = row && row.status === 'blocked';
+          await api(blocked ? 'unblock' : 'block', { id });
+          loadClients();
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById('q').addEventListener('input', () => {
+      clearTimeout(window.__q);
+      window.__q = setTimeout(() => loadClients().catch((e) => alert(e.message)), 300);
+    });
+
+    document.getElementById('c-go').addEventListener('click', async () => {
+      const btn = document.getElementById('c-go');
+      btn.disabled = true;
+      try {
+        const data = await api('create', {
+          name: document.getElementById('c-name').value,
+          totalGb: Number(document.getElementById('c-gb').value) || 0,
+          days: Number(document.getElementById('c-days').value) || 0
+        });
+        const box = document.getElementById('c-result');
+        box.classList.remove('hidden');
+        box.innerHTML =
+          '<b>Ссылка для клиента</b><br>' + data.pageUrl +
+          '<br><br><button type="button" class="btn secondary" id="copy-page">Копировать ссылку</button>';
+        document.getElementById('copy-page').onclick = async () => {
+          await navigator.clipboard.writeText(data.pageUrl);
+          toast('Скопировано');
+        };
+        toast('Создано');
+        loadClients().catch(() => {});
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    async function loadServers() {
+      const data = await api('panels_list');
+      const db = document.getElementById('srv-db');
+      db.innerHTML = '';
+      (data.db || []).forEach((s) => {
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.innerHTML =
+          '<div class="title">' + s.label + ' · ' + s.key_code + (Number(s.enabled) ? '' : ' (выкл)') + '</div>' +
+          '<div class="muted">' + s.server_host + ' · inbound ' + s.inbound_id + (s.has_token ? ' · token ✓' : ' · нет token') + '</div>' +
+          '<div class="actions">' +
+          '<button type="button" data-del="' + s.id + '">Удалить</button>' +
+          '</div>';
+        db.appendChild(el);
+      });
+      if (!(data.db || []).length) {
+        db.innerHTML = '<div class="card muted">Нет серверов — добавьте ниже. Без них Happ будет пустым.</div>';
+      }
+    }
+
+    document.getElementById('s-health')?.addEventListener('click', async () => {
+      try {
+        const data = await api('panels_health');
+        const lines = (data.results || []).map((x) =>
+          (x.label || x.key) + ': ' + (x.ok ? 'OK ' + x.ms + 'ms' : ('DOWN ' + (x.error || '')))
+        );
+        alert(lines.join('\n') || 'Нет серверов');
+      } catch (e) {
+        alert(e.message);
+      }
+    });
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+    }
+
+    document.getElementById('btn-push')?.addEventListener('click', async () => {
+      try {
+        if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+          alert('Пуш не поддерживается в этом браузере');
+          return;
+        }
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          alert('Нет разрешения на уведомления');
+          return;
+        }
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+        const { publicKey } = await api('vapid_public');
+        if (!publicKey) {
+          alert('На сервере не задан VAPID_PUBLIC_KEY');
+          return;
+        }
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey)
+        });
+        await api('push_subscribe', { subscription: sub.toJSON() });
+        toast('Пуш включён');
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    });
+
+    document.getElementById('btn-push-test')?.addEventListener('click', async () => {
+      try {
+        await api('push_test');
+        toast('Тест отправлен');
+      } catch (e) {
+        alert(e.message);
+      }
+    });
+
+    document.getElementById('srv-db').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-del]');
+      if (!b) return;
+      if (!confirm('Убрать сервер из подписок?')) return;
+      try {
+        await api('panel_delete', { id: Number(b.dataset.del) });
+        toast('Удалено');
+        loadServers();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById('s-add').addEventListener('click', async () => {
+      try {
+        await api('panel_add', {
+          key_code: document.getElementById('s-key').value,
+          label: document.getElementById('s-label').value,
+          panel_url: document.getElementById('s-url').value,
+          api_token: document.getElementById('s-token').value,
+          server_host: document.getElementById('s-host').value,
+          inbound_id: Number(document.getElementById('s-in').value) || 1
+        });
+        toast('Сервер добавлен');
+        loadServers();
+      } catch (e) {
+        alert(e.message);
+      }
+    });
+
+    if (!ADMIN_KEY) {
+      document.body.innerHTML = '<div style="padding:24px">Откройте с ?key=ADMIN_API_KEY</div>';
+    } else {
+      loadClients().catch((e) => alert(e.message));
+      loadServers().catch(() => {});
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

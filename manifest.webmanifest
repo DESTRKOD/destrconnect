@@ -1,0 +1,16 @@
+{
+  "name": "Destr Connect Admin",
+  "short_name": "Destr Admin",
+  "start_url": "/admin",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/images/logoPWA.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

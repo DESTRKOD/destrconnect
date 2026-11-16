@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/sub",
+      "destination": "/sub.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/api/public",
+      "destination": "/api/public"
+    },
+    {
+      "source": "/api/admin",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/sub",
+      "destination": "/api/sub"
+    },
+    {
+      "source": "/api/sub/:token*",
+      "destination": "/api/sub?token=:token*"
+    },
+    {
+      "source": "/api/cron",
+      "destination": "/api/cron"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}

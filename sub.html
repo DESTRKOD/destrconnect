@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#f4f6fb" />
+  <title>Destr Connect</title>
+  <link rel="icon" href="/images/logoPWA.png" />
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #8b93a7;
+      --blue: #3390ec;
+      --blue-soft: #e8f2fc;
+      --green: #22c55e;
+      --line: #eef1f6;
+      --radius: 20px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    body {
+      padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand img {
+      width: 44px; height: 44px; border-radius: 12px; object-fit: cover;
+      background: #111;
+    }
+    .brand h1 { font-size: 18px; font-weight: 700; line-height: 1.2; }
+    .brand p { font-size: 13px; color: var(--muted); }
+    .icon-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; background: var(--card);
+      display: grid; place-items: center;
+      box-shadow: 0 1px 3px rgba(15,23,42,.06);
+      cursor: pointer;
+    }
+    .icon-btn svg { width: 22px; height: 22px; color: var(--text); }
+    .icon-btn.spin svg { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hero {
+      background: linear-gradient(145deg, #eaf3ff 0%, #f7fbff 55%, #eef4ff 100%);
+      border-radius: 28px;
+      padding: 22px 20px;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .hero .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,.85);
+      color: #16a34a;
+      font-size: 13px; font-weight: 600;
+      padding: 6px 10px; border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    .hero .badge.bad { color: #dc2626; }
+    .hero .badge.warn { color: #d97706; }
+    .hero h2 { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; max-width: 70%; }
+    .hero .date {
+      margin-top: 14px;
+      display: flex; align-items: center; gap: 8px;
+      color: var(--muted); font-size: 14px;
+    }
+    .hero .shield {
+      position: absolute; right: 8px; top: 18px; width: 120px; height: 120px; opacity: .95;
+      pointer-events: none;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      background: var(--card);
+      border-radius: 18px;
+      padding: 14px 16px;
+    }
+    .stat .lbl {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--muted); font-size: 12px; margin-bottom: 6px;
+    }
+    .stat .val { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .stat .sub { font-size: 12px; color: var(--muted); font-weight: 500; }
+
+    .card {
+      background: var(--card);
+      border-radius: 22px;
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+    .card h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+    .card .hint { font-size: 13px; color: var(--muted); line-height: 1.4; margin-bottom: 14px; }
+    .happ-row {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .happ-row .left { flex: 1; min-width: 0; }
+    #qr {
+      width: 88px; height: 88px;
+      border-radius: 12px;
+      background: #fff;
+    }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; height: 48px;
+      border: none; border-radius: 999px;
+      background: var(--blue); color: #fff;
+      font-size: 16px; font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn:active { opacity: .9; }
+    .btn svg { width: 20px; height: 20px; }
+
+    .section-title {
+      font-size: 18px; font-weight: 700;
+      margin: 8px 0 10px;
+    }
+    .server {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 8px;
+    }
+    .server .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #cbd5e1;
+    }
+    .server .dot.on { background: var(--green); }
+    .server .dot.off { background: #f87171; }
+    .server .name { flex: 1; font-weight: 600; font-size: 15px; }
+    .server .st { font-size: 13px; color: var(--muted); }
+
+    .foot {
+      margin-top: 8px;
+      background: var(--card);
+      border-radius: 16px;
+      padding: 14px 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .err {
+      background: #fef2f2; color: #b91c1c;
+      border-radius: 16px; padding: 16px;
+      font-size: 15px; line-height: 1.4;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">
+      <img src="/images/logoPWA.png" alt="" onerror="this.style.display='none'" />
+      <div>
+        <h1>Destr Connect</h1>
+        <p>Подписка</p>
+      </div>
+    </div>
+    <button type="button" class="icon-btn" id="btn-refresh" aria-label="Обновить">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-2.6-6.2"/>
+        <polyline points="21 3 21 9 15 9"/>
+      </svg>
+    </button>
+  </div>
+
+  <div id="error" class="err hidden"></div>
+  <div id="app" class="hidden">
+    <div class="hero">
+      <div class="badge" id="badge"><span>•</span> <span id="badge-text">—</span></div>
+      <h2 id="hero-title">Подписка</h2>
+      <div class="date" id="hero-date-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <span id="hero-date">—</span>
+      </div>
+      <svg class="shield" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="g" x1="20" y1="10" x2="100" y2="110">
+            <stop stop-color="#7dd3fc"/><stop offset="1" stop-color="#3b82f6"/>
+          </linearGradient>
+        </defs>
+        <path d="M60 12l40 16v28c0 28-17 48-40 56C37 104 20 84 20 56V28L60 12z" fill="url(#g)" opacity=".35"/>
+        <path d="M60 28l26 10v18c0 18-11 31-26 36-15-5-26-18-26-36V38L60 28z" fill="#fff" opacity=".9"/>
+        <path d="M52 58l6 6 12-14" stroke="#3b82f6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <div class="stats hidden" id="stats">
+      <div class="stat">
+        <div class="lbl">Использовано</div>
+        <div class="val"><span id="used">0</span> <span class="sub">ГБ</span></div>
+        <div class="sub" id="used-of"></div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Осталось</div>
+        <div class="val"><span id="left">0</span> <span class="sub">ГБ</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="happ-row">
+        <div class="left">
+          <h3>Добавьте подписку в Happ</h3>
+          <p class="hint">Отсканируйте QR-код или нажмите кнопку ниже</p>
+          <a class="btn" id="btn-happ" href="#" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" opacity=".2"/><path d="M8 12h8M12 8v8" stroke="#fff" stroke-width="2" fill="none"/></svg>
+            Добавить в Happ
+          </a>
+        </div>
+        <canvas id="qr" width="88" height="88"></canvas>
+      </div>
+    </div>
+
+    <div class="section-title">Наши серверы</div>
+    <div id="servers"></div>
+    <div class="foot" id="foot-paid">—</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const token = (params.get('token') || '').trim();
+
+    function $(id) { return document.getElementById(id); }
+    function fmtDate(iso) {
+      if (!iso) return null;
+      const d = new Date(iso);
+      if (isNaN(d)) return null;
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    async function load() {
+      if (!token) {
+        $('error').textContent = 'Неверная ссылка. Откройте ссылку, которую вам отправили.';
+        $('error').classList.remove('hidden');
+        $('app').classList.add('hidden');
+        return;
+      }
+      $('btn-refresh').classList.add('spin');
+      try {
+        const r = await fetch('/api/public?action=sub&token=' + encodeURIComponent(token));
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.error || 'Ошибка');
+
+        $('error').classList.add('hidden');
+        $('app').classList.remove('hidden');
+
+        const blocked = data.status === 'blocked';
+        const paidUntil = data.paidUntil || data.expiryAt;
+        const dateStr = fmtDate(paidUntil);
+
+        const badge = $('badge');
+        const badgeText = $('badge-text');
+        badge.classList.remove('bad', 'warn');
+        if (blocked) {
+          badge.classList.add('bad');
+          badgeText.textContent = 'Заблокирована';
+          $('hero-title').textContent = 'Подписка недоступна';
+        } else if (dateStr && new Date(paidUntil) < new Date()) {
+          badge.classList.add('warn');
+          badgeText.textContent = 'Срок истёк';
+          $('hero-title').textContent = 'Подписка неактивна';
+        } else {
+          badgeText.textContent = 'Активна';
+          $('hero-title').textContent = 'Ваша подписка активна';
+        }
+
+        if (dateStr) {
+          $('hero-date').textContent = (blocked || new Date(paidUntil) < new Date() ? 'До ' : 'До ') + dateStr;
+          $('foot-paid').textContent = 'Подписка ' + (data.paymentStatus === 'paid' ? 'оплачена' : 'отмечена') + ' до ' + dateStr;
+        } else {
+          $('hero-date').textContent = 'Срок не указан';
+          $('foot-paid').textContent = data.paymentStatus === 'paid' ? 'Оплачено' : 'Статус оплаты уточняйте у администратора';
+        }
+
+        if (data.unlimited) {
+          $('stats').classList.add('hidden');
+        } else {
+          $('stats').classList.remove('hidden');
+          const used = Number(data.usedGb) || 0;
+          const total = Number(data.totalGb) || 0;
+          const left = Math.max(0, Math.round((total - used) * 10) / 10);
+          $('used').textContent = used;
+          $('left').textContent = left;
+          $('used-of').textContent = 'из ' + total + ' ГБ';
+        }
+
+        const happ = data.happUrl || ('/api/sub?token=' + encodeURIComponent(token));
+        const btn = $('btn-happ');
+        // Happ deep links vary; open subscription URL (user adds in app)
+        btn.href = happ;
+        btn.onclick = (e) => {
+          e.preventDefault();
+          // try open URL — Happ may capture https subscription links on mobile
+          window.location.href = happ;
+        };
+
+        if (window.QRCode) {
+          QRCode.toCanvas($('qr'), happ, { width: 88, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } }, () => {});
+        }
+
+        const box = $('servers');
+        box.innerHTML = '';
+        (data.servers || []).forEach((s) => {
+          const el = document.createElement('div');
+          el.className = 'server';
+          const st = s.status === 'ok' || s.status === 'up' ? 'on' : (s.status === 'down' ? 'off' : '');
+          const stLabel = st === 'on' ? 'в сети' : (st === 'off' ? 'сбой' : '—');
+          el.innerHTML = '<div class="dot ' + st + '"></div><div class="name"></div><div class="st"></div>';
+          el.querySelector('.name').textContent = s.label || s.key;
+          el.querySelector('.st').textContent = stLabel;
+          box.appendChild(el);
+        });
+        if (!(data.servers || []).length) {
+          box.innerHTML = '<div class="foot">Серверы появятся после настройки в админке</div>';
+        }
+      } catch (e) {
+        $('app').classList.add('hidden');
+        $('error').textContent = e.message || 'Не удалось загрузить';
+        $('error').classList.remove('hidden');
+      } finally {
+        $('btn-refresh').classList.remove('spin');
+      }
+    }
+
+    $('btn-refresh').addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>
