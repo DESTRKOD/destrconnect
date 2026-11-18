@@ -224,7 +224,7 @@
           <p class="hint">Отсканируйте QR-код или нажмите кнопку — откроется Happ</p>
           <a class="btn" id="btn-happ" href="#">Добавить в Happ</a>
         </div>
-        <canvas id="qr" width="88" height="88"></canvas>
+        <img id="qr" width="88" height="88" alt="QR" style="border-radius:12px;background:#fff" />
       </div>
     </div>
 
@@ -232,8 +232,7 @@
     <div id="servers"></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-  <script>
+    <script>
     const params = new URLSearchParams(location.search);
     const token = (params.get('token') || '').trim();
     let firstLoad = true;
@@ -310,21 +309,27 @@
         }
 
         const httpsSub = data.happUrl || (location.origin + '/api/sub?token=' + encodeURIComponent(token));
-        const deep = happDeepLink(httpsSub);
+        // Deep link: opens Happ app (not the raw subscription page)
+        const deep = 'happ://add/' + httpsSub + '#Destr%20Connect';
         const btn = $('btn-happ');
-        btn.href = deep;
-        btn.onclick = (e) => {
+        btn.setAttribute('href', deep);
+        btn.onclick = function (e) {
           e.preventDefault();
+          e.stopPropagation();
+          // iOS/Android: scheme opens Happ; fallback copy if app missing
           window.location.href = deep;
+          setTimeout(function () {
+            // if still visible after 1.2s — app may not have opened
+          }, 1200);
+          return false;
         };
 
-        if (window.QRCode) {
-          // QR = happ deep link so scan opens Happ
-          QRCode.toCanvas($('qr'), deep, {
-            width: 88,
-            margin: 1,
-            color: { dark: '#0f172a', light: '#ffffff' }
-          }, () => {});
+        // QR without external JS (CDN often blocked in RF)
+        var qrImg = $('qr');
+        if (qrImg) {
+          qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=176x176&margin=8&data=' +
+            encodeURIComponent(deep);
+          qrImg.alt = 'QR Happ';
         }
 
         const box = $('servers');

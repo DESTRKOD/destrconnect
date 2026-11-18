@@ -284,15 +284,15 @@
         }).join('\n');
         box.innerHTML =
           '<b>Ссылка для клиента</b><br><span id="c-page-url"></span>' +
-          '<br><br><canvas id="c-qr" width="160" height="160"></canvas>' +
+          '<br><br><img id="c-qr" width="160" height="160" alt="QR" style="background:#fff;border-radius:12px" />' +
           '<br><button type="button" class="btn secondary" id="copy-page">Копировать ссылку</button>' +
           (panelsInfo ? '<div class="muted" style="margin-top:10px;white-space:pre-wrap"></div>' : '');
         document.getElementById('c-page-url').textContent = data.pageUrl;
         if (panelsInfo) box.querySelector('.muted').textContent = panelsInfo;
-        if (window.QRCode) {
-          QRCode.toCanvas(document.getElementById('c-qr'), data.pageUrl, {
-            width: 160, margin: 1, color: { dark: '#0f172a', light: '#ffffff' }
-          }, function () {});
+        var q = document.getElementById('c-qr');
+        if (q) {
+          q.src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=8&data=' +
+            encodeURIComponent(data.pageUrl);
         }
         document.getElementById('copy-page').onclick = async () => {
           await navigator.clipboard.writeText(data.pageUrl);
