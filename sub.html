@@ -13,9 +13,8 @@
       --text: #0f172a;
       --muted: #8b93a7;
       --blue: #3390ec;
-      --blue-soft: #e8f2fc;
       --green: #22c55e;
-      --line: #eef1f6;
+      --skel: #e8ecf3;
       --radius: 20px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -38,8 +37,7 @@
     }
     .brand { display: flex; align-items: center; gap: 12px; }
     .brand img {
-      width: 44px; height: 44px; border-radius: 12px; object-fit: cover;
-      background: #111;
+      width: 44px; height: 44px; border-radius: 12px; object-fit: cover; background: #111;
     }
     .brand h1 { font-size: 18px; font-weight: 700; line-height: 1.2; }
     .brand p { font-size: 13px; color: var(--muted); }
@@ -94,10 +92,7 @@
       border-radius: 18px;
       padding: 14px 16px;
     }
-    .stat .lbl {
-      display: flex; align-items: center; gap: 6px;
-      color: var(--muted); font-size: 12px; margin-bottom: 6px;
-    }
+    .stat .lbl { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
     .stat .val { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
     .stat .sub { font-size: 12px; color: var(--muted); font-weight: 500; }
 
@@ -109,15 +104,9 @@
     }
     .card h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
     .card .hint { font-size: 13px; color: var(--muted); line-height: 1.4; margin-bottom: 14px; }
-    .happ-row {
-      display: flex; align-items: center; gap: 14px;
-    }
+    .happ-row { display: flex; align-items: center; gap: 14px; }
     .happ-row .left { flex: 1; min-width: 0; }
-    #qr {
-      width: 88px; height: 88px;
-      border-radius: 12px;
-      background: #fff;
-    }
+    #qr { width: 88px; height: 88px; border-radius: 12px; background: #fff; }
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
       width: 100%; height: 48px;
@@ -128,12 +117,7 @@
       text-decoration: none;
     }
     .btn:active { opacity: .9; }
-    .btn svg { width: 20px; height: 20px; }
-
-    .section-title {
-      font-size: 18px; font-weight: 700;
-      margin: 8px 0 10px;
-    }
+    .section-title { font-size: 18px; font-weight: 700; margin: 8px 0 10px; }
     .server {
       background: var(--card);
       border-radius: 16px;
@@ -141,30 +125,34 @@
       display: flex; align-items: center; gap: 12px;
       margin-bottom: 8px;
     }
-    .server .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #cbd5e1;
-    }
+    .server .dot { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; }
     .server .dot.on { background: var(--green); }
     .server .dot.off { background: #f87171; }
     .server .name { flex: 1; font-weight: 600; font-size: 15px; }
     .server .st { font-size: 13px; color: var(--muted); }
-
-    .foot {
-      margin-top: 8px;
-      background: var(--card);
-      border-radius: 16px;
-      padding: 14px 16px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
     .err {
       background: #fef2f2; color: #b91c1c;
       border-radius: 16px; padding: 16px;
       font-size: 15px; line-height: 1.4;
     }
     .hidden { display: none !important; }
+
+    /* skeleton */
+    .skel {
+      background: linear-gradient(90deg, var(--skel) 25%, #f3f5f9 50%, var(--skel) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s ease-in-out infinite;
+      border-radius: 18px;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .skel-hero { height: 160px; margin-bottom: 14px; border-radius: 28px; }
+    .skel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .skel-stat { height: 78px; }
+    .skel-card { height: 140px; margin-bottom: 14px; }
+    .skel-line { height: 52px; margin-bottom: 8px; border-radius: 16px; }
   </style>
 </head>
 <body>
@@ -185,6 +173,18 @@
   </div>
 
   <div id="error" class="err hidden"></div>
+
+  <div id="skeleton">
+    <div class="skel skel-hero"></div>
+    <div class="skel-row">
+      <div class="skel skel-stat"></div>
+      <div class="skel skel-stat"></div>
+    </div>
+    <div class="skel skel-card"></div>
+    <div class="skel skel-line"></div>
+    <div class="skel skel-line"></div>
+  </div>
+
   <div id="app" class="hidden">
     <div class="hero">
       <div class="badge" id="badge"><span>•</span> <span id="badge-text">—</span></div>
@@ -221,11 +221,8 @@
       <div class="happ-row">
         <div class="left">
           <h3>Добавьте подписку в Happ</h3>
-          <p class="hint">Отсканируйте QR-код или нажмите кнопку ниже</p>
-          <a class="btn" id="btn-happ" href="#" rel="noopener">
-            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" opacity=".2"/><path d="M8 12h8M12 8v8" stroke="#fff" stroke-width="2" fill="none"/></svg>
-            Добавить в Happ
-          </a>
+          <p class="hint">Отсканируйте QR-код или нажмите кнопку — откроется Happ</p>
+          <a class="btn" id="btn-happ" href="#">Добавить в Happ</a>
         </div>
         <canvas id="qr" width="88" height="88"></canvas>
       </div>
@@ -233,13 +230,13 @@
 
     <div class="section-title">Наши серверы</div>
     <div id="servers"></div>
-    <div class="foot" id="foot-paid">—</div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
     const token = (params.get('token') || '').trim();
+    let firstLoad = true;
 
     function $(id) { return document.getElementById(id); }
     function fmtDate(iso) {
@@ -249,20 +246,33 @@
       return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
     }
 
+    function happDeepLink(httpsSubUrl) {
+      return 'happ://add/' + httpsSubUrl + '#Destr%20Connect';
+    }
+
     async function load() {
       if (!token) {
+        $('skeleton').classList.add('hidden');
         $('error').textContent = 'Неверная ссылка. Откройте ссылку, которую вам отправили.';
         $('error').classList.remove('hidden');
         $('app').classList.add('hidden');
         return;
       }
-      $('btn-refresh').classList.add('spin');
+
+      if (firstLoad) {
+        $('skeleton').classList.remove('hidden');
+        $('app').classList.add('hidden');
+      } else {
+        $('btn-refresh').classList.add('spin');
+      }
+
       try {
         const r = await fetch('/api/public?action=sub&token=' + encodeURIComponent(token));
         const data = await r.json();
         if (!data.ok) throw new Error(data.error || 'Ошибка');
 
         $('error').classList.add('hidden');
+        $('skeleton').classList.add('hidden');
         $('app').classList.remove('hidden');
 
         const blocked = data.status === 'blocked';
@@ -285,13 +295,7 @@
           $('hero-title').textContent = 'Ваша подписка активна';
         }
 
-        if (dateStr) {
-          $('hero-date').textContent = (blocked || new Date(paidUntil) < new Date() ? 'До ' : 'До ') + dateStr;
-          $('foot-paid').textContent = 'Подписка ' + (data.paymentStatus === 'paid' ? 'оплачена' : 'отмечена') + ' до ' + dateStr;
-        } else {
-          $('hero-date').textContent = 'Срок не указан';
-          $('foot-paid').textContent = data.paymentStatus === 'paid' ? 'Оплачено' : 'Статус оплаты уточняйте у администратора';
-        }
+        $('hero-date').textContent = dateStr ? ('До ' + dateStr) : 'Срок не указан';
 
         if (data.unlimited) {
           $('stats').classList.add('hidden');
@@ -305,18 +309,22 @@
           $('used-of').textContent = 'из ' + total + ' ГБ';
         }
 
-        const happ = data.happUrl || ('/api/sub?token=' + encodeURIComponent(token));
+        const httpsSub = data.happUrl || (location.origin + '/api/sub?token=' + encodeURIComponent(token));
+        const deep = happDeepLink(httpsSub);
         const btn = $('btn-happ');
-        // Happ deep links vary; open subscription URL (user adds in app)
-        btn.href = happ;
+        btn.href = deep;
         btn.onclick = (e) => {
           e.preventDefault();
-          // try open URL — Happ may capture https subscription links on mobile
-          window.location.href = happ;
+          window.location.href = deep;
         };
 
         if (window.QRCode) {
-          QRCode.toCanvas($('qr'), happ, { width: 88, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } }, () => {});
+          // QR = happ deep link so scan opens Happ
+          QRCode.toCanvas($('qr'), deep, {
+            width: 88,
+            margin: 1,
+            color: { dark: '#0f172a', light: '#ffffff' }
+          }, () => {});
         }
 
         const box = $('servers');
@@ -332,13 +340,15 @@
           box.appendChild(el);
         });
         if (!(data.servers || []).length) {
-          box.innerHTML = '<div class="foot">Серверы появятся после настройки в админке</div>';
+          box.innerHTML = '<div class="card" style="color:var(--muted);font-size:14px">Серверы появятся после настройки в админке</div>';
         }
       } catch (e) {
+        $('skeleton').classList.add('hidden');
         $('app').classList.add('hidden');
         $('error').textContent = e.message || 'Не удалось загрузить';
         $('error').classList.remove('hidden');
       } finally {
+        firstLoad = false;
         $('btn-refresh').classList.remove('spin');
       }
     }

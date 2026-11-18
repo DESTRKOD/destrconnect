@@ -101,30 +101,36 @@ export default async function adminCore(req, res) {
         remark: displayName
       });
 
+      // subscriptions.user_id has FK → always create a real user row first
+      let uid = null;
       try {
-        await db.execute({
-          sql: `INSERT INTO subscriptions (user_id, display_name, xui_email, sub_token, total_gb, expiry_days, expiry_at, status, payment_status)
-                VALUES (NULL, ?, ?, ?, ?, ?, ?, 'active', 'unpaid')`,
-          args: [displayName, xuiEmail, subToken, totalGb, days, expiryAt]
+        const u = await db.execute({
+          sql: `INSERT INTO users (name) VALUES (?) RETURNING id`,
+          args: [displayName]
         });
-      } catch (insErr) {
-        // older schema may require user_id — attach to placeholder user
-        let uid = 0;
+        uid = u.rows?.[0]?.id ?? u.rows?.[0]?.ID;
+      } catch (e1) {
         try {
-          const u = await db.execute({
-            sql: `INSERT INTO users (name) VALUES ('system') RETURNING id`
+          await db.execute({
+            sql: `INSERT INTO users (name) VALUES (?)`,
+            args: [displayName]
           });
-          uid = u.rows?.[0]?.id;
-        } catch (_) {
-          const u2 = await db.execute(`SELECT id FROM users LIMIT 1`);
-          uid = u2.rows?.[0]?.id || 1;
+          const u2 = await db.execute({
+            sql: `SELECT id FROM users WHERE name = ? ORDER BY id DESC LIMIT 1`,
+            args: [displayName]
+          });
+          uid = u2.rows?.[0]?.id;
+        } catch (e2) {
+          throw new Error('Не удалось создать user: ' + (e2.message || e1.message));
         }
-        await db.execute({
-          sql: `INSERT INTO subscriptions (user_id, display_name, xui_email, sub_token, total_gb, expiry_days, expiry_at, status, payment_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'unpaid')`,
-          args: [uid, displayName, xuiEmail, subToken, totalGb, days, expiryAt]
-        });
       }
+      if (!uid) throw new Error('user id empty after insert');
+
+      await db.execute({
+        sql: `INSERT INTO subscriptions (user_id, display_name, xui_email, sub_token, total_gb, expiry_days, expiry_at, status, payment_status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'unpaid')`,
+        args: [uid, displayName, xuiEmail, subToken, totalGb, days, expiryAt]
+      });
 
       const pageUrl = clientPageUrlForToken(subToken);
       const happUrl = subscriptionUrlForToken(subToken);

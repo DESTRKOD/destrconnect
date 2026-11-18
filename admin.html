@@ -81,6 +81,14 @@
       background: #0f172a; word-break: break-all; font-size: 13px;
     }
     .search { margin-bottom: 12px; }
+    .msg {
+      margin: 12px 0; padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 1.4;
+      background: #1e293b; color: #e2e8f0; white-space: pre-wrap; word-break: break-word;
+    }
+    .msg.ok { background: #14532d; color: #bbf7d0; }
+    .msg.err { background: #7f1d1d; color: #fecaca; }
+    .msg.hidden { display: none; }
+    #c-qr { margin-top: 12px; background: #fff; border-radius: 12px; padding: 8px; display: inline-block; }
     .toast {
       position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
       background: #1e293b; color: #fff; padding: 10px 16px; border-radius: 12px;
@@ -141,6 +149,7 @@
     </div>
   </div>
 
+  <div id="msg" class="msg hidden"></div>
   <div class="toast" id="toast"></div>
 
   <script>
@@ -153,6 +162,18 @@
       el.textContent = t;
       el.style.display = 'block';
       setTimeout(() => { el.style.display = 'none'; }, 2800);
+    }
+    function showMsg(text, kind) {
+      const el = document.getElementById('msg');
+      if (!el) { toast(text); return; }
+      el.textContent = text;
+      el.classList.remove('hidden', 'ok', 'err');
+      if (kind === 'ok') el.classList.add('ok');
+      if (kind === 'err') el.classList.add('err');
+    }
+    function clearMsg() {
+      const el = document.getElementById('msg');
+      if (el) { el.classList.add('hidden'); el.textContent = ''; }
     }
 
     async function api(action, body = {}) {
@@ -220,7 +241,7 @@
           const url = location.origin + '/sub?token=' + encodeURIComponent(btn.dataset.token || '');
           await navigator.clipboard.writeText(url);
           toast('Ссылка скопирована');
-          alert(url);
+          showMsg(url, 'ok');
         } else if (a === 'paid') {
           const d = prompt('Оплачено до (ГГГГ-ММ-ДД):', new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10));
           if (!d) return;
@@ -238,13 +259,13 @@
           loadClients();
         }
       } catch (err) {
-        alert(err.message);
+        showMsg(err.message || String(err), 'err');
       }
     });
 
     document.getElementById('q').addEventListener('input', () => {
       clearTimeout(window.__q);
-      window.__q = setTimeout(() => loadClients().catch((e) => alert(e.message)), 300);
+      window.__q = setTimeout(() => loadClients().catch((e) => showMsg(e.message || String(e), 'err')), 300);
     });
 
     document.getElementById('c-go').addEventListener('click', async () => {
@@ -258,17 +279,29 @@
         });
         const box = document.getElementById('c-result');
         box.classList.remove('hidden');
+        const panelsInfo = (data.panelResults || []).map(function (p) {
+          return (p.name || '?') + ': ' + (p.ok ? 'ok' : (p.error || 'fail'));
+        }).join('\n');
         box.innerHTML =
-          '<b>Ссылка для клиента</b><br>' + data.pageUrl +
-          '<br><br><button type="button" class="btn secondary" id="copy-page">Копировать ссылку</button>';
+          '<b>Ссылка для клиента</b><br><span id="c-page-url"></span>' +
+          '<br><br><canvas id="c-qr" width="160" height="160"></canvas>' +
+          '<br><button type="button" class="btn secondary" id="copy-page">Копировать ссылку</button>' +
+          (panelsInfo ? '<div class="muted" style="margin-top:10px;white-space:pre-wrap"></div>' : '');
+        document.getElementById('c-page-url').textContent = data.pageUrl;
+        if (panelsInfo) box.querySelector('.muted').textContent = panelsInfo;
+        if (window.QRCode) {
+          QRCode.toCanvas(document.getElementById('c-qr'), data.pageUrl, {
+            width: 160, margin: 1, color: { dark: '#0f172a', light: '#ffffff' }
+          }, function () {});
+        }
         document.getElementById('copy-page').onclick = async () => {
           await navigator.clipboard.writeText(data.pageUrl);
-          toast('Скопировано');
+          showMsg('Ссылка скопирована', 'ok');
         };
-        toast('Создано');
+        showMsg('Подписка создана', 'ok');
         loadClients().catch(() => {});
       } catch (e) {
-        alert(e.message);
+        showMsg(e.message || String(e), 'err');
       } finally {
         btn.disabled = false;
       }
@@ -300,9 +333,9 @@
         const lines = (data.results || []).map((x) =>
           (x.label || x.key) + ': ' + (x.ok ? 'OK ' + x.ms + 'ms' : ('DOWN ' + (x.error || '')))
         );
-        alert(lines.join('\n') || 'Нет серверов');
+        showMsg(lines.join('\n') || 'Нет серверов', 'ok');
       } catch (e) {
-        alert(e.message);
+        showMsg(e.message || String(e), 'err');
       }
     });
 
@@ -318,19 +351,19 @@
     document.getElementById('btn-push')?.addEventListener('click', async () => {
       try {
         if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-          alert('Пуш не поддерживается в этом браузере');
+          showMsg('Пуш не поддерживается в этом браузере', 'err');
           return;
         }
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
-          alert('Нет разрешения на уведомления');
+          showMsg('Нет разрешения на уведомления', 'err');
           return;
         }
         const reg = await navigator.serviceWorker.register('/sw.js');
         await navigator.serviceWorker.ready;
         const { publicKey } = await api('vapid_public');
         if (!publicKey) {
-          alert('На сервере не задан VAPID_PUBLIC_KEY');
+          showMsg('На сервере не задан VAPID_PUBLIC_KEY', 'err');
           return;
         }
         const sub = await reg.pushManager.subscribe({
@@ -340,7 +373,7 @@
         await api('push_subscribe', { subscription: sub.toJSON() });
         toast('Пуш включён');
       } catch (e) {
-        alert(e.message || String(e));
+        showMsg(e.message || String(e), 'err');
       }
     });
 
@@ -349,7 +382,7 @@
         await api('push_test');
         toast('Тест отправлен');
       } catch (e) {
-        alert(e.message);
+        showMsg(e.message || String(e), 'err');
       }
     });
 
@@ -362,7 +395,7 @@
         toast('Удалено');
         loadServers();
       } catch (err) {
-        alert(err.message);
+        showMsg(err.message || String(err), 'err');
       }
     });
 
@@ -379,14 +412,14 @@
         toast('Сервер добавлен');
         loadServers();
       } catch (e) {
-        alert(e.message);
+        showMsg(e.message || String(e), 'err');
       }
     });
 
     if (!ADMIN_KEY) {
       document.body.innerHTML = '<div style="padding:24px">Откройте с ?key=ADMIN_API_KEY</div>';
     } else {
-      loadClients().catch((e) => alert(e.message));
+      loadClients().catch((e) => showMsg(e.message || String(e), 'err'));
       loadServers().catch(() => {});
     }
 
