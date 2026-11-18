@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/images/logoPWA.png" />
+  <link rel="apple-touch-icon" href="/images/logoPWA.svg" />
   <title>Destr Connect — Админ</title>
   <style>
     :root {
@@ -82,14 +82,45 @@
     }
     .search { margin-bottom: 12px; }
     .msg {
-      margin: 12px 0; padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 1.4;
-      background: #1e293b; color: #e2e8f0; white-space: pre-wrap; word-break: break-word;
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      left: auto;
+      z-index: 9999;
+      max-width: min(380px, calc(100vw - 32px));
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      background: #1e293b;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      box-shadow: 0 8px 24px rgba(0,0,0,.2);
     }
     .msg.ok { background: #14532d; color: #bbf7d0; }
     .msg.err { background: #7f1d1d; color: #fecaca; }
     .msg.hidden { display: none; }
     #c-qr { margin-top: 12px; background: #fff; border-radius: 12px; padding: 8px; display: inline-block; }
     .toast {
+      position: fixed !important;
+      top: 16px !important;
+      right: 16px !important;
+      left: auto !important;
+      bottom: auto !important;
+      z-index: 10000;
+      max-width: min(360px, calc(100vw - 32px));
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.25);
+      display: none;
+    }
+    .toast.on { display: block; }
+    .toast_PLACEHOLDER {
       position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
       background: #1e293b; color: #fff; padding: 10px 16px; border-radius: 12px;
       font-size: 14px; display: none; z-index: 20;
@@ -161,6 +192,10 @@
       const el = document.getElementById('toast');
       el.textContent = t;
       el.style.display = 'block';
+      el.style.top = '16px';
+      el.style.right = '16px';
+      el.style.left = 'auto';
+      el.style.bottom = 'auto';
       setTimeout(() => { el.style.display = 'none'; }, 2800);
     }
     function showMsg(text, kind) {
@@ -291,7 +326,7 @@
         if (panelsInfo) box.querySelector('.muted').textContent = panelsInfo;
         var q = document.getElementById('c-qr');
         if (q && window.drawQrWithLogo) {
-          drawQrWithLogo(q, data.pageUrl, { size: 160, logoUrl: '/images/logoPWA.png', logoShare: 0.22 })
+          drawQrWithLogo(q, data.pageUrl, { size: 160, logoUrl: '/images/logoPWA.svg', logoShare: 0.22 })
             .catch(function () {});
         }
         document.getElementById('copy-page').onclick = async () => {

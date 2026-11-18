@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f4f6fb" />
   <title>Destr Connect</title>
-  <link rel="icon" href="/images/logoPWA.png" />
+  <link rel="icon" href="/images/logoPWA.svg" />
   <style>
     :root {
       --bg: #f4f6fb;
@@ -137,6 +137,45 @@
     }
     .hidden { display: none !important; }
 
+    #qr {
+      width: 120px; height: 120px;
+      border-radius: 12px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .qr-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(15, 23, 42, 0.72);
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .qr-overlay.hidden { display: none !important; }
+    .qr-overlay-inner {
+      background: #fff;
+      border-radius: 20px;
+      padding: 20px;
+      max-width: 92vw;
+      text-align: center;
+    }
+    .qr-overlay-inner canvas, .qr-overlay-inner img {
+      width: min(280px, 70vw) !important;
+      height: auto !important;
+      border-radius: 12px;
+    }
+    .qr-overlay-close {
+      margin-top: 14px;
+      width: 100%;
+      height: 44px;
+      border: none;
+      border-radius: 999px;
+      background: #3390ec;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+
     /* skeleton */
     .skel {
       background: linear-gradient(90deg, var(--skel) 25%, #f3f5f9 50%, var(--skel) 75%);
@@ -158,7 +197,7 @@
 <body>
   <div class="top">
     <div class="brand">
-      <img src="/images/logoPWA.png" alt="" onerror="this.style.display='none'" />
+      <img src="/images/logoPWA.svg" alt="" onerror="this.style.display='none'" />
       <div>
         <h1>Destr Connect</h1>
         <p>Подписка</p>
@@ -224,7 +263,13 @@
           <p class="hint">Отсканируйте QR-код или нажмите кнопку — откроется Happ</p>
           <a class="btn" id="btn-happ" href="#">Добавить в Happ</a>
         </div>
-        <canvas id="qr" width="88" height="88" style="border-radius:12px;background:#fff"></canvas>
+        <canvas id="qr" width="120" height="120" style="border-radius:12px;background:#fff;cursor:pointer"></canvas>
+  <div id="qr-overlay" class="qr-overlay hidden" role="dialog">
+    <div class="qr-overlay-inner">
+      <canvas id="qr-big" width="280" height="280"></canvas>
+      <button type="button" class="qr-overlay-close" id="qr-close">Закрыть</button>
+    </div>
+  </div>
       </div>
     </div>
 
@@ -326,10 +371,43 @@
           return false;
         };
 
-        var qrCanvas = $('qr');
-        if (qrCanvas && window.drawQrWithLogo) {
-          drawQrWithLogo(qrCanvas, deep, { size: 88, logoUrl: '/images/logoPWA.png', logoShare: 0.24 })
-            .catch(function () {});
+        window.__happDeep = deep;
+        async function paintQr() {
+          var qrCanvas = $('qr');
+          if (qrCanvas && window.drawQrWithLogo) {
+            await drawQrWithLogo(qrCanvas, deep, {
+              size: 120,
+              logoUrl: '/images/logoPWA.svg',
+              logoShare: 0.24
+            }).catch(function () {});
+          }
+        }
+        await paintQr();
+
+        qrCanvas = $('qr');
+        if (qrCanvas) {
+          qrCanvas.onclick = async function () {
+            var ov = $('qr-overlay');
+            var big = $('qr-big');
+            ov.classList.remove('hidden');
+            if (big && window.drawQrWithLogo) {
+              await drawQrWithLogo(big, window.__happDeep || deep, {
+                size: 280,
+                logoUrl: '/images/logoPWA.svg',
+                logoShare: 0.22
+              }).catch(function () {});
+            }
+          };
+        }
+        var qclose = $('qr-close');
+        if (qclose) {
+          qclose.onclick = function () { $('qr-overlay').classList.add('hidden'); };
+        }
+        var qov = $('qr-overlay');
+        if (qov) {
+          qov.onclick = function (e) {
+            if (e.target === qov) qov.classList.add('hidden');
+          };
         }
 
         const box = $('servers');

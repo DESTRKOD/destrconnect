@@ -1,13 +1,14 @@
-/** Draw QR + center logo (logoPWA.png). Uses QRCode lib if loaded. */
+/** Draw QR + center logo (SVG preferred). */
 window.drawQrWithLogo = async function drawQrWithLogo(canvas, text, opts) {
   opts = opts || {};
   var size = opts.size || 160;
-  var logoUrl = opts.logoUrl || '/images/logoPWA.png';
-  var logoShare = opts.logoShare || 0.22; // logo size vs QR
+  var logoUrl = opts.logoUrl || '/images/logoPWA.svg';
+  var logoShare = opts.logoShare || 0.22;
 
   canvas.width = size;
   canvas.height = size;
   var ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
 
   function drawLogo() {
     return new Promise(function (resolve) {
@@ -16,12 +17,12 @@ window.drawQrWithLogo = async function drawQrWithLogo(canvas, text, opts) {
         var lw = Math.floor(size * logoShare);
         var lx = Math.floor((size - lw) / 2);
         var ly = Math.floor((size - lw) / 2);
-        var pad = Math.floor(lw * 0.12);
-        // white pad so QR stays scannable
+        var pad = Math.max(2, Math.floor(lw * 0.1));
+        // white quiet zone only (no black box)
         ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        var r = Math.floor(lw * 0.15);
+        var r = Math.floor(lw * 0.12);
         var x = lx - pad, y = ly - pad, w = lw + pad * 2, h = lw + pad * 2;
+        ctx.beginPath();
         ctx.moveTo(x + r, y);
         ctx.arcTo(x + w, y, x + w, y + h, r);
         ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -32,7 +33,23 @@ window.drawQrWithLogo = async function drawQrWithLogo(canvas, text, opts) {
         ctx.drawImage(img, lx, ly, lw, lw);
         resolve(true);
       };
-      img.onerror = function () { resolve(false); };
+      img.onerror = function () {
+        // try png fallback
+        if (logoUrl.indexOf('.svg') !== -1) {
+          var img2 = new Image();
+          img2.onload = function () {
+            var lw = Math.floor(size * logoShare);
+            var lx = Math.floor((size - lw) / 2);
+            var ly = Math.floor((size - lw) / 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(lx - 4, ly - 4, lw + 8, lw + 8);
+            ctx.drawImage(img2, lx, ly, lw, lw);
+            resolve(true);
+          };
+          img2.onerror = function () { resolve(false); };
+          img2.src = '/images/logoPWA.png';
+        } else resolve(false);
+      };
       img.src = logoUrl;
     });
   }
@@ -53,7 +70,6 @@ window.drawQrWithLogo = async function drawQrWithLogo(canvas, text, opts) {
     return true;
   }
 
-  // Fallback: external QR image + logo (may taint canvas if CORS blocks — then show img only)
   return new Promise(function (resolve) {
     var q = new Image();
     q.crossOrigin = 'anonymous';
