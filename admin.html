@@ -284,15 +284,15 @@
         }).join('\n');
         box.innerHTML =
           '<b>Ссылка для клиента</b><br><span id="c-page-url"></span>' +
-          '<br><br><img id="c-qr" width="160" height="160" alt="QR" style="background:#fff;border-radius:12px" />' +
+          '<br><br><canvas id="c-qr" width="160" height="160" style="background:#fff;border-radius:12px"></canvas>' +
           '<br><button type="button" class="btn secondary" id="copy-page">Копировать ссылку</button>' +
           (panelsInfo ? '<div class="muted" style="margin-top:10px;white-space:pre-wrap"></div>' : '');
         document.getElementById('c-page-url').textContent = data.pageUrl;
         if (panelsInfo) box.querySelector('.muted').textContent = panelsInfo;
         var q = document.getElementById('c-qr');
-        if (q) {
-          q.src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=8&data=' +
-            encodeURIComponent(data.pageUrl);
+        if (q && window.drawQrWithLogo) {
+          drawQrWithLogo(q, data.pageUrl, { size: 160, logoUrl: '/images/logoPWA.png', logoShare: 0.22 })
+            .catch(function () {});
         }
         document.getElementById('copy-page').onclick = async () => {
           await navigator.clipboard.writeText(data.pageUrl);
@@ -427,5 +427,7 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
   </script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="/qr-logo.js"></script>
 </body>
 </html>

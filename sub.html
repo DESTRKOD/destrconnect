@@ -224,7 +224,7 @@
           <p class="hint">Отсканируйте QR-код или нажмите кнопку — откроется Happ</p>
           <a class="btn" id="btn-happ" href="#">Добавить в Happ</a>
         </div>
-        <img id="qr" width="88" height="88" alt="QR" style="border-radius:12px;background:#fff" />
+        <canvas id="qr" width="88" height="88" style="border-radius:12px;background:#fff"></canvas>
       </div>
     </div>
 
@@ -232,7 +232,9 @@
     <div id="servers"></div>
   </div>
 
-    <script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="/qr-logo.js"></script>
+  <script>
     const params = new URLSearchParams(location.search);
     const token = (params.get('token') || '').trim();
     let firstLoad = true;
@@ -324,12 +326,10 @@
           return false;
         };
 
-        // QR without external JS (CDN often blocked in RF)
-        var qrImg = $('qr');
-        if (qrImg) {
-          qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=176x176&margin=8&data=' +
-            encodeURIComponent(deep);
-          qrImg.alt = 'QR Happ';
+        var qrCanvas = $('qr');
+        if (qrCanvas && window.drawQrWithLogo) {
+          drawQrWithLogo(qrCanvas, deep, { size: 88, logoUrl: '/images/logoPWA.png', logoShare: 0.24 })
+            .catch(function () {});
         }
 
         const box = $('servers');
