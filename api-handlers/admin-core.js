@@ -16,7 +16,17 @@ function makeXuiEmail(displayName) {
   return base + '_' + crypto.randomBytes(3).toString('hex');
 }
 
-async function provision(email, { totalGB, expiryTime, enable, remark }) {
+function isAlreadyOnPanel(msg) {
+  const m = String(msg || '').toLowerCase();
+  return (
+    m.includes('already') ||
+    m.includes('duplicate') ||
+    m.includes('exist') ||
+    m.includes('in use')
+  );
+}
+
+async function provision(email, { totalGB, expiryTime, enable, remark, soft = false }) {
   const panels = await loadPanelsFromDb();
   const results = [];
   for (const [name, panel] of Object.entries(panels)) {
@@ -31,9 +41,13 @@ async function provision(email, { totalGB, expiryTime, enable, remark }) {
         enable: enable !== false,
         remark: remark || email
       });
-      results.push({ name, ok: true });
+      results.push({ name, ok: true, created: true });
     } catch (e) {
-      results.push({ name, ok: false, error: e.message });
+      if (soft && isAlreadyOnPanel(e.message)) {
+        results.push({ name, ok: true, skipped: true });
+      } else {
+        results.push({ name, ok: false, error: e.message });
+      }
     }
   }
   if (!Object.keys(panels).length) {
@@ -72,10 +86,27 @@ export default async function adminCore(req, res) {
     /* ---- list subscriptions ---- */
     if (action === 'list' || action === 'users') {
       const q = String(body.q || req.query?.q || '').trim();
-      let sql = `SELECT * FROM subscriptions ORDER BY id DESC LIMIT 200`;
+      const sort = String(body.sort || req.query?.sort || 'default').trim();
+      const orderBy = {
+        default: 'id DESC',
+        expiry_asc: 'COALESCE(paid_until, expiry_at) ASC NULLS LAST',
+        expiry_desc: 'COALESCE(paid_until, expiry_at) DESC NULLS LAST',
+        amount_asc: 'COALESCE(paid_amount, 0) ASC',
+        amount_desc: 'COALESCE(paid_amount, 0) DESC'
+      };
+      // libsql/sqlite: NULLS LAST not always supported — use CASE
+      const orderMap = {
+        default: 'id DESC',
+        expiry_asc: 'CASE WHEN COALESCE(paid_until, expiry_at) IS NULL THEN 1 ELSE 0 END, COALESCE(paid_until, expiry_at) ASC',
+        expiry_desc: 'CASE WHEN COALESCE(paid_until, expiry_at) IS NULL THEN 1 ELSE 0 END, COALESCE(paid_until, expiry_at) DESC',
+        amount_asc: 'COALESCE(paid_amount, 0) ASC',
+        amount_desc: 'COALESCE(paid_amount, 0) DESC'
+      };
+      const order = orderMap[sort] || orderMap.default;
+      let sql = `SELECT * FROM subscriptions ORDER BY ${order} LIMIT 300`;
       let args = [];
       if (q) {
-        sql = `SELECT * FROM subscriptions WHERE display_name LIKE ? OR xui_email LIKE ? OR CAST(id AS TEXT) = ? ORDER BY id DESC LIMIT 200`;
+        sql = `SELECT * FROM subscriptions WHERE display_name LIKE ? OR xui_email LIKE ? OR CAST(id AS TEXT) = ? ORDER BY ${order} LIMIT 300`;
         args = ['%' + q + '%', '%' + q + '%', q];
       }
       const r = await db.execute({ sql, args });
@@ -87,9 +118,16 @@ export default async function adminCore(req, res) {
       const displayName = String(body.name || body.displayName || 'sub').trim();
       const totalGb = Number(body.totalGb ?? body.total_gb ?? 0) || 0;
       const days = Number(body.days ?? body.expiry_days ?? 0) || 0;
+      const paidAmount = Number(body.paidAmount ?? body.paid_amount ?? 0) || 0;
+      let paidUntil = body.paidUntil || body.paid_until || null;
+      if (paidUntil && !String(paidUntil).includes('T')) {
+        // YYYY-MM-DD → end of day UTC-ish ISO
+        paidUntil = String(paidUntil).trim() + 'T23:59:59.000Z';
+      }
       const expiryTime = days > 0 ? Date.now() + days * 86400000 : 0;
-      const expiryAt =
+      let expiryAt =
         days > 0 ? new Date(expiryTime).toISOString() : null;
+      if (paidUntil) expiryAt = paidUntil;
 
       const xuiEmail = makeXuiEmail(displayName);
       const subToken = makeToken(xuiEmail);
@@ -126,10 +164,11 @@ export default async function adminCore(req, res) {
       }
       if (!uid) throw new Error('user id empty after insert');
 
+      const payStatus = paidAmount > 0 || paidUntil ? 'paid' : 'unpaid';
       await db.execute({
-        sql: `INSERT INTO subscriptions (user_id, display_name, xui_email, sub_token, total_gb, expiry_days, expiry_at, status, payment_status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'unpaid')`,
-        args: [uid, displayName, xuiEmail, subToken, totalGb, days, expiryAt]
+        sql: `INSERT INTO subscriptions (user_id, display_name, xui_email, sub_token, total_gb, expiry_days, expiry_at, status, payment_status, paid_until, paid_amount)
+              VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+        args: [uid, displayName, xuiEmail, subToken, totalGb, days, expiryAt, payStatus, paidUntil || expiryAt, paidAmount]
       });
 
       const pageUrl = clientPageUrlForToken(subToken);
@@ -239,6 +278,76 @@ export default async function adminCore(req, res) {
     }
 
     
+    if (action === 'panel_update') {
+      const id = Number(body.id);
+      if (!id) return res.status(400).json({ ok: false, error: 'id required' });
+      const fields = [];
+      const args = [];
+      const map = {
+        key_code: 'key_code',
+        label: 'label',
+        panel_url: 'panel_url',
+        api_token: 'api_token',
+        server_host: 'server_host',
+        inbound_id: 'inbound_id',
+        enabled: 'enabled',
+        sort_order: 'sort_order'
+      };
+      for (const [k, col] of Object.entries(map)) {
+        if (body[k] === undefined) continue;
+        fields.push(col + ' = ?');
+        if (k === 'inbound_id' || k === 'enabled' || k === 'sort_order') {
+          args.push(Number(body[k]));
+        } else {
+          args.push(String(body[k]).trim());
+        }
+      }
+      if (!fields.length) return res.status(400).json({ ok: false, error: 'nothing to update' });
+      args.push(id);
+      await db.execute({
+        sql: `UPDATE panels SET ${fields.join(', ')} WHERE id = ?`,
+        args
+      });
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === 'sync_subscriptions') {
+      const subs = await db.execute(`SELECT id, xui_email, display_name, total_gb, expiry_at, paid_until FROM subscriptions WHERE status IS NULL OR status != 'blocked'`);
+      const rows = subs.rows || [];
+      const summary = [];
+      for (const s of rows) {
+        const email = s.xui_email;
+        if (!email) {
+          summary.push({ id: s.id, ok: false, error: 'no xui_email' });
+          continue;
+        }
+        let expMs = 0;
+        const raw = s.paid_until || s.expiry_at;
+        if (raw) {
+          const tms = new Date(raw).getTime();
+          if (Number.isFinite(tms)) expMs = tms;
+        }
+        const results = await provision(email, {
+          totalGB: Number(s.total_gb) || 0,
+          expiryTime: expMs,
+          enable: true,
+          remark: s.display_name || email,
+          soft: true
+        });
+        summary.push({
+          id: s.id,
+          email,
+          ok: results.every((r) => r.ok),
+          results
+        });
+      }
+      return res.status(200).json({
+        ok: true,
+        total: rows.length,
+        summary
+      });
+    }
+
     if (action === 'vapid_public') {
       return res.status(200).json({
         ok: true,

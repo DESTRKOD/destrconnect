@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Вход — Destr Connect</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #111827;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --blue: #3390ec;
+      --line: #1e293b;
+      --err: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+      max-width: 420px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+    h1 { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 8px; }
+    .hint { color: var(--muted); font-size: 14px; text-align: center; margin-bottom: 28px; }
+    .digits {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 28px;
+    }
+    .digits input {
+      width: 44px;
+      height: 52px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      font-size: 22px;
+      font-weight: 700;
+      text-align: center;
+      caret-color: var(--blue);
+    }
+    .digits input:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+    .btn {
+      width: 100%;
+      height: 48px;
+      border: none;
+      border-radius: 14px;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.45; }
+    .err {
+      color: var(--err);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 14px;
+      min-height: 1.2em;
+    }
+    .setup-link {
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .setup-link a { color: var(--blue); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h1>Введите код ниже</h1>
+  <p class="hint">Код из приложения Authenticator</p>
+  <div class="digits" id="digits">
+    <input inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="1" />
+    <input inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="2" />
+    <input inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="3" />
+    <input inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="4" />
+    <input inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="5" />
+    <input inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="6" />
+  </div>
+  <button type="button" class="btn" id="btn" disabled>Продолжить</button>
+  <div class="err" id="err"></div>
+
+  <script>
+    const inputs = [...document.querySelectorAll('#digits input')];
+    const btn = document.getElementById('btn');
+    const err = document.getElementById('err');
+
+    function onlyDigit(v) {
+      return String(v || '').replace(/\D/g, '').slice(0, 1);
+    }
+
+    function code() {
+      return inputs.map((i) => i.value).join('');
+    }
+
+    function syncBtn() {
+      btn.disabled = code().length !== 6;
+    }
+
+    inputs.forEach((input, idx) => {
+      input.addEventListener('input', (e) => {
+        const d = onlyDigit(e.target.value);
+        e.target.value = d;
+        if (d && idx < inputs.length - 1) inputs[idx + 1].focus();
+        syncBtn();
+        err.textContent = '';
+        if (code().length === 6) submit();
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !input.value && idx > 0) {
+          inputs[idx - 1].focus();
+        }
+        if (e.key === 'Enter') submit();
+      });
+      input.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = onlyDigit(e.clipboardData.getData('text')).padEnd(0);
+        const digits = String(e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+        digits.split('').forEach((ch, i) => {
+          if (inputs[i]) inputs[i].value = ch;
+        });
+        syncBtn();
+        if (digits.length === 6) submit();
+        else if (digits.length) inputs[Math.min(digits.length, 5)].focus();
+      });
+    });
+
+    async function submit() {
+      const c = code();
+      if (c.length !== 6 || btn.disabled) return;
+      btn.disabled = true;
+      err.textContent = '';
+      try {
+        const r = await fetch('/api/auth-admin?action=login', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: c })
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data.ok) {
+          err.textContent = data.error || 'Ошибка входа';
+          inputs.forEach((i) => (i.value = ''));
+          inputs[0].focus();
+          syncBtn();
+          return;
+        }
+        location.href = '/admin';
+      } catch (e) {
+        err.textContent = e.message || 'Нет сети';
+        syncBtn();
+      }
+    }
+
+    btn.addEventListener('click', submit);
+
+    (async () => {
+      try {
+        const r = await fetch('/api/auth-admin?action=status', { credentials: 'include' });
+        const data = await r.json();
+        if (data.loggedIn) location.replace('/admin');
+      } catch (_) {}
+      inputs[0].focus();
+    })();
+  </script>
+</body>
+</html>

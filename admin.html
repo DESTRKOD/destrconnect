@@ -71,6 +71,14 @@
     .badge.paid { background: #14532d; color: var(--ok); }
     .badge.unpaid { background: #7f1d1d; color: #fecaca; }
     .badge.blocked { background: #450a0a; color: #fca5a5; }
+    .date-ok { color: #4ade80; font-weight: 600; }
+    .date-warn { color: #fbbf24; font-weight: 600; }
+    .date-danger { color: #f87171; font-weight: 700; }
+    .sortbar { display:flex; flex-wrap:wrap; gap:8px; margin: 10px 0 12px; }
+    .sortbar select {
+      flex:1; min-width: 140px; height: 40px; border-radius: 12px;
+      border: 1px solid var(--line); background: #0f172a; color: var(--text); padding: 0 10px;
+    }
     .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     .actions button {
       border: none; border-radius: 10px; padding: 8px 10px;
@@ -132,6 +140,7 @@
   <p class="sub">Админ-панель · PWA</p>
   <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
     <button type="button" class="btn secondary" id="btn-push" style="width:auto;padding:0 14px;height:40px;margin:0">Включить пуш</button>
+    <button type="button" class="btn secondary" id="btn-logout" style="width:auto;padding:0 14px;height:40px;margin:0">Выйти</button>
     <button type="button" class="btn secondary" id="btn-push-test" style="width:auto;padding:0 14px;height:40px;margin:0">Тест пуш</button>
   </div>
 
@@ -143,6 +152,15 @@
 
   <div class="panel on" id="tab-clients">
     <input class="search" id="q" type="search" placeholder="Поиск по имени / id" />
+    <div class="sortbar">
+      <select id="sort">
+        <option value="default">Сортировка: по умолчанию</option>
+        <option value="expiry_asc">Окончание: раньше</option>
+        <option value="expiry_desc">Окончание: позже</option>
+        <option value="amount_desc">Сумма: больше</option>
+        <option value="amount_asc">Сумма: меньше</option>
+      </select>
+    </div>
     <div id="list"></div>
   </div>
 
@@ -154,6 +172,10 @@
       <input id="c-gb" type="number" value="0" />
       <label>Срок, дней (0 = без срока в 3x)</label>
       <input id="c-days" type="number" value="30" />
+      <label>Дата окончания</label>
+      <input id="c-until" type="date" />
+      <label>Сумма оплаты</label>
+      <input id="c-amount" type="number" step="0.01" min="0" placeholder="0" />
       <button type="button" class="btn" id="c-go">Создать подписку</button>
       <div class="linkbox hidden" id="c-result"></div>
     </div>
@@ -162,7 +184,9 @@
   <div class="panel" id="tab-servers">
     <div class="card">
       <p class="muted" style="margin-bottom:8px">Все серверы задаются здесь. Они попадают в Happ и на страницу клиента. Статус — живой запрос к панели.</p>
-      <button type="button" class="btn secondary" id="s-health" style="margin-bottom:10px">Проверить доступность</button>
+      <button type="button" class="btn secondary" id="s-health" style="margin-bottom:8px">Проверить доступность</button>
+      <button type="button" class="btn" id="s-sync" style="margin-bottom:10px">Обновить подписки</button>
+      <p class="muted" id="s-sync-msg" style="margin-bottom:10px"></p>
       <div id="srv-db"></div>
       <label>Код (de, ru, se…)</label>
       <input id="s-key" placeholder="se" />
@@ -176,7 +200,10 @@
       <input id="s-host" placeholder="1.2.3.4" />
       <label>Inbound ID</label>
       <input id="s-in" type="number" value="1" />
+      <input type="hidden" id="s-id" value="" />
       <button type="button" class="btn" id="s-add">Добавить сервер</button>
+      <button type="button" class="btn secondary hidden" id="s-save">Сохранить изменения</button>
+      <button type="button" class="btn secondary hidden" id="s-cancel">Отмена</button>
     </div>
   </div>
 
@@ -184,9 +211,7 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    const params = new URLSearchParams(location.search);
-    const ADMIN_KEY = params.get('key') || params.get('admin') || localStorage.getItem('dc_admin_key') || '';
-    if (ADMIN_KEY) localStorage.setItem('dc_admin_key', ADMIN_KEY);
+    /* session cookie auth — no key in URL */
 
     function toast(t) {
       const el = document.getElementById('toast');
@@ -211,24 +236,114 @@
       if (el) { el.classList.add('hidden'); el.textContent = ''; }
     }
 
+    function formatUntilBadge(iso) {
+      if (!iso) return '<span class="muted">без даты</span>';
+      const d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return '<span class="muted">без даты</span>';
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      const label = 'до ' + dd + '.' + mm + '.' + yyyy;
+      const daysLeft = (d.getTime() - Date.now()) / 86400000;
+      let cls = 'date-ok';
+      if (daysLeft <= 1) cls = 'date-danger';
+      else if (daysLeft <= 3) cls = 'date-warn';
+      return '<span class="' + cls + '">' + label + '</span>';
+    }
+
     async function api(action, body = {}) {
-      const r = await fetch('/api/admin?action=' + encodeURIComponent(action), {
+      const r = await fetch('/api/admin', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Key': ADMIN_KEY,
-          Authorization: 'Bearer ' + ADMIN_KEY
-        },
-        body: JSON.stringify({ ...body, action })
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...body })
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
+      if (r.status === 401) {
+        location.href = '/login';
+        throw new Error(data.error || 'Unauthorized');
+      }
+      if (!r.ok || data.ok === false) {
+        throw new Error(data.error || ('HTTP ' + r.status));
+      }
       return data;
     }
 
+    document.getElementById('sort')?.addEventListener('change', () => loadClients());
+
+    document.getElementById('list')?.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      const act = b.dataset.act;
+      const id = Number(b.dataset.id);
+      try {
+        if (act === 'copy') {
+          await navigator.clipboard.writeText(b.dataset.url || '');
+          toast('Ссылка скопирована');
+          return;
+        }
+        if (act === 'paid') {
+          const d = prompt('Дата окончания (ГГГГ-ММ-ДД)', new Date(Date.now()+30*864e5).toISOString().slice(0,10));
+          if (!d) return;
+          await api('set_payment', { id, paid: true, paidUntil: d + 'T23:59:59.000Z' });
+          toast('Отмечено оплачено');
+        } else if (act === 'unpaid') {
+          await api('set_payment', { id, paid: false });
+          toast('Не оплачено');
+        } else if (act === 'block') {
+          const row = (await api('list')).items.find((x) => Number(x.id) === id);
+          const blocked = row && row.status === 'blocked';
+          await api(blocked ? 'unblock' : 'block', { id });
+          toast(blocked ? 'Разблокировано' : 'Заблокировано');
+        }
+        loadClients();
+      } catch (err) {
+        showMsg(err.message || String(err), 'err');
+      }
+    });
+    document.getElementById('q')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') loadClients();
+    });
+
     document.querySelectorAll('.tab').forEach((btn) => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach((b) => b.classList.remove('on'));
+        document.getElementById('sort')?.addEventListener('change', () => loadClients());
+
+    document.getElementById('list')?.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      const act = b.dataset.act;
+      const id = Number(b.dataset.id);
+      try {
+        if (act === 'copy') {
+          await navigator.clipboard.writeText(b.dataset.url || '');
+          toast('Ссылка скопирована');
+          return;
+        }
+        if (act === 'paid') {
+          const d = prompt('Дата окончания (ГГГГ-ММ-ДД)', new Date(Date.now()+30*864e5).toISOString().slice(0,10));
+          if (!d) return;
+          await api('set_payment', { id, paid: true, paidUntil: d + 'T23:59:59.000Z' });
+          toast('Отмечено оплачено');
+        } else if (act === 'unpaid') {
+          await api('set_payment', { id, paid: false });
+          toast('Не оплачено');
+        } else if (act === 'block') {
+          const row = (await api('list')).items.find((x) => Number(x.id) === id);
+          const blocked = row && row.status === 'blocked';
+          await api(blocked ? 'unblock' : 'block', { id });
+          toast(blocked ? 'Разблокировано' : 'Заблокировано');
+        }
+        loadClients();
+      } catch (err) {
+        showMsg(err.message || String(err), 'err');
+      }
+    });
+    document.getElementById('q')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') loadClients();
+    });
+
+    document.querySelectorAll('.tab').forEach((b) => b.classList.remove('on'));
         document.querySelectorAll('.panel').forEach((p) => p.classList.remove('on'));
         btn.classList.add('on');
         document.getElementById('tab-' + btn.dataset.tab).classList.add('on');
@@ -237,7 +352,8 @@
 
     async function loadClients() {
       const q = document.getElementById('q').value.trim();
-      const data = await api('list', { q });
+      const sort = (document.getElementById('sort') && document.getElementById('sort').value) || 'default';
+      const data = await api('list', { q, sort });
       const box = document.getElementById('list');
       box.innerHTML = '';
       (data.items || []).forEach((s) => {
@@ -246,24 +362,30 @@
         const pay = s.payment_status === 'paid' ? 'paid' : 'unpaid';
         const payLabel = s.payment_status === 'paid' ? 'оплачено' : 'не оплачено';
         const blocked = s.status === 'blocked';
+        const untilRaw = s.paid_until || s.expiry_at;
+        const dateHtml = formatUntilBadge(untilRaw);
+        const amount = s.paid_amount != null && s.paid_amount !== '' ? Number(s.paid_amount) : 0;
+        const pageUrl = (s.sub_token ? (location.origin.replace('admin.', 'connect.') + '/sub?token=' + encodeURIComponent(s.sub_token)) : '');
         el.innerHTML =
           '<div class="row"><div class="meta">' +
           '<div class="title">#' + s.id + ' · ' + (s.display_name || '—') +
           '<span class="badge ' + pay + '">' + payLabel + '</span>' +
           (blocked ? '<span class="badge blocked">блок</span>' : '') +
           '</div>' +
-          '<div class="muted">' + (s.paid_until || s.expiry_at || 'без даты') + '</div>' +
+          '<div class="muted">' + dateHtml + (amount ? (' · ' + amount + ' ₽') : '') + '</div>' +
           '<div class="muted">' + (s.xui_email || '') + '</div>' +
           '</div></div>' +
           '<div class="actions">' +
-          '<button type="button" data-a="link" data-id="' + s.id + '" data-token="' + (s.sub_token || '') + '">Ссылка клиенту</button>' +
-          '<button type="button" data-a="paid" data-id="' + s.id + '">Оплачено + дата</button>' +
-          '<button type="button" data-a="unpaid" data-id="' + s.id + '">Не оплачено</button>' +
-          '<button type="button" data-a="block" data-id="' + s.id + '">' + (blocked ? 'Включить' : 'Выключить') + '</button>' +
+          '<button type="button" data-act="paid" data-id="' + s.id + '">Оплачено</button>' +
+          '<button type="button" data-act="unpaid" data-id="' + s.id + '">Не оплачено</button>' +
+          '<button type="button" data-act="block" data-id="' + s.id + '">' + (blocked ? 'Разблок' : 'Блок') + '</button>' +
+          (pageUrl ? '<button type="button" data-act="copy" data-url="' + pageUrl + '">Ссылка</button>' : '') +
           '</div>';
         box.appendChild(el);
       });
-      if (!(data.items || []).length) box.innerHTML = '<div class="card muted">Пока нет подписок</div>';
+      if (!(data.items || []).length) {
+        box.innerHTML = '<div class="card muted">Пусто</div>';
+      }
     }
 
     document.getElementById('list').addEventListener('click', async (e) => {
@@ -310,7 +432,9 @@
         const data = await api('create', {
           name: document.getElementById('c-name').value,
           totalGb: Number(document.getElementById('c-gb').value) || 0,
-          days: Number(document.getElementById('c-days').value) || 0
+          days: Number(document.getElementById('c-days').value) || 0,
+          paidUntil: document.getElementById('c-until').value || null,
+          paidAmount: Number(document.getElementById('c-amount').value) || 0
         });
         const box = document.getElementById('c-result');
         box.classList.remove('hidden');
@@ -346,13 +470,16 @@
       const data = await api('panels_list');
       const db = document.getElementById('srv-db');
       db.innerHTML = '';
+      window.__panels = data.db || [];
       (data.db || []).forEach((s) => {
         const el = document.createElement('div');
         el.className = 'card';
         el.innerHTML =
           '<div class="title">' + s.label + ' · ' + s.key_code + (Number(s.enabled) ? '' : ' (выкл)') + '</div>' +
           '<div class="muted">' + s.server_host + ' · inbound ' + s.inbound_id + (s.has_token ? ' · token ✓' : ' · нет token') + '</div>' +
+          '<div class="muted" style="font-size:11px">' + (s.panel_url || '') + '</div>' +
           '<div class="actions">' +
+          '<button type="button" data-edit="' + s.id + '">Редактировать</button>' +
           '<button type="button" data-del="' + s.id + '">Удалить</button>' +
           '</div>';
         db.appendChild(el);
@@ -360,6 +487,28 @@
       if (!(data.db || []).length) {
         db.innerHTML = '<div class="card muted">Нет серверов — добавьте ниже. Без них Happ будет пустым.</div>';
       }
+    }
+
+    function fillServerForm(s) {
+      document.getElementById('s-id').value = s.id;
+      document.getElementById('s-key').value = s.key_code || '';
+      document.getElementById('s-label').value = s.label || '';
+      document.getElementById('s-url').value = s.panel_url || '';
+      document.getElementById('s-token').value = '';
+      document.getElementById('s-host').value = s.server_host || '';
+      document.getElementById('s-in').value = s.inbound_id || 1;
+      document.getElementById('s-add').classList.add('hidden');
+      document.getElementById('s-save').classList.remove('hidden');
+      document.getElementById('s-cancel').classList.remove('hidden');
+    }
+
+    function clearServerForm() {
+      document.getElementById('s-id').value = '';
+      ['s-key','s-label','s-url','s-token','s-host'].forEach((id) => document.getElementById(id).value = '');
+      document.getElementById('s-in').value = 1;
+      document.getElementById('s-add').classList.remove('hidden');
+      document.getElementById('s-save').classList.add('hidden');
+      document.getElementById('s-cancel').classList.add('hidden');
     }
 
     document.getElementById('s-health')?.addEventListener('click', async () => {
@@ -412,6 +561,11 @@
       }
     });
 
+    document.getElementById('btn-logout')?.addEventListener('click', async () => {
+      await fetch('/api/auth-admin?action=logout', { method: 'POST', credentials: 'include' });
+      location.href = '/login';
+    });
+
     document.getElementById('btn-push-test')?.addEventListener('click', async () => {
       try {
         await api('push_test');
@@ -422,6 +576,12 @@
     });
 
     document.getElementById('srv-db').addEventListener('click', async (e) => {
+      const ed = e.target.closest('[data-edit]');
+      if (ed) {
+        const s = (window.__panels || []).find((x) => Number(x.id) === Number(ed.dataset.edit));
+        if (s) fillServerForm(s);
+        return;
+      }
       const b = e.target.closest('[data-del]');
       if (!b) return;
       if (!confirm('Убрать сервер из подписок?')) return;
@@ -431,6 +591,45 @@
         loadServers();
       } catch (err) {
         showMsg(err.message || String(err), 'err');
+      }
+    });
+
+    document.getElementById('s-cancel')?.addEventListener('click', () => clearServerForm());
+
+    document.getElementById('s-save')?.addEventListener('click', async () => {
+      try {
+        const id = Number(document.getElementById('s-id').value);
+        const payload = {
+          id,
+          key_code: document.getElementById('s-key').value,
+          label: document.getElementById('s-label').value,
+          panel_url: document.getElementById('s-url').value,
+          server_host: document.getElementById('s-host').value,
+          inbound_id: Number(document.getElementById('s-in').value) || 1
+        };
+        const tok = document.getElementById('s-token').value.trim();
+        if (tok) payload.api_token = tok;
+        await api('panel_update', payload);
+        toast('Сервер обновлён');
+        clearServerForm();
+        loadServers();
+      } catch (e) {
+        showMsg(e.message || String(e), 'err');
+      }
+    });
+
+    document.getElementById('s-sync')?.addEventListener('click', async () => {
+      const msg = document.getElementById('s-sync-msg');
+      if (!confirm('Добавить все серверы во все подписки? Уже существующие клиенты на панелях будут пропущены.')) return;
+      msg.textContent = 'Синхронизация…';
+      try {
+        const data = await api('sync_subscriptions');
+        const ok = (data.summary || []).filter((x) => x.ok).length;
+        msg.textContent = 'Готово: ' + ok + ' / ' + (data.total || 0) + ' подписок. Клиенты обновляют Happ → «Обновить подписку».';
+        toast('Подписки обновлены');
+      } catch (e) {
+        msg.textContent = e.message || String(e);
+        showMsg(e.message || String(e), 'err');
       }
     });
 
@@ -451,12 +650,19 @@
       }
     });
 
-    if (!ADMIN_KEY) {
-      document.body.innerHTML = '<div style="padding:24px">Откройте с ?key=ADMIN_API_KEY</div>';
-    } else {
-      loadClients().catch((e) => showMsg(e.message || String(e), 'err'));
-      loadServers().catch(() => {});
-    }
+    (async () => {
+      try {
+        const st = await fetch('/api/auth-admin?action=status', { credentials: 'include' }).then((r) => r.json());
+        if (!st.loggedIn) {
+          location.replace('/login');
+          return;
+        }
+        loadClients().catch((e) => showMsg(e.message || String(e), 'err'));
+        loadServers().catch(() => {});
+      } catch (e) {
+        location.replace('/login');
+      }
+    })();
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
